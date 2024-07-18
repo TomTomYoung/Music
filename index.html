@@ -136,7 +136,7 @@
                 div.removeEventListener('mouseover', handleNoteMouseOver);
                 div.removeEventListener('click', handleNoteClick);
                 div.removeEventListener('click', handleNoteAdd);
-                div.removeEventListener('mousedown', handleMouseDown);
+                div.removeEventListener('mousedown', handleCopyDrag);
                 div.removeEventListener('dblclick', handleShowEditTools);
             });
         }
@@ -151,7 +151,7 @@
                 } else if (mode === 'add') {
                     div.addEventListener('click', handleNoteAdd);
                 } else if (mode === 'grip') {
-                    div.addEventListener('mousedown', handleMouseDown);
+                    div.addEventListener('mousedown', handleCopyDrag);
                 } else if (mode === 'edit') {
                     div.addEventListener('click', handleShowEditTools);
                 }
@@ -259,6 +259,35 @@
             updateMelodyOutput();
         }
 
+
+        function handleCopyDrag(e) {
+            const noteDiv = e.target;
+            e.preventDefault();
+
+
+            
+            // Create a copy of the selected note
+            const noteCopy = noteDiv.cloneNode(true);
+            noteCopy.style.position = 'absolute';
+            noteCopy.style.margin = '0';
+
+            // Get the position of the original note
+            const rect = noteDiv.getBoundingClientRect();
+            noteCopy.style.top = `${rect.top + window.scrollY}px`;
+            noteCopy.style.left = `${rect.left + window.scrollX}px`;
+
+            // Add the copy to the container
+            document.body.appendChild(noteCopy);
+
+            // Make the copy draggable
+            selectedNote = noteCopy;
+
+            document.addEventListener('mousemove', handleDrag);
+            document.addEventListener('mouseup', () => {
+                document.removeEventListener('mousemove', handleDrag);
+            }, { once: true });
+        }        
+
         function handleMouseDown(e) {
             const noteDiv = e.target;
             e.preventDefault();
@@ -266,9 +295,23 @@
 
             const noteContainer = document.getElementById('noteContainer');
 
+
+            // const noteDivs = document.querySelectorAll('.note');
+            // noteDivs.forEach(div => {
+            //     // Calculate the current position relative to the parent container
+            //     const top = div.offsetTop;
+            //     const left = div.offsetLeft;
+
+            //     // Apply absolute positioning while maintaining the current position
+            //     div.style.position = 'absolute';
+            //     div.style.top = `${top}px`;
+            //     div.style.left = `${left}px`;
+            //     div.style.margin = '0';  // Reset margin to avoid additional offsets
+            // });            
+
             // Ensure the parent container has a relative position
             //noteContainer.style.position = 'block';
-            noteContainer.style.display = "";
+            //noteContainer.style.display = "";
 
             // Record the current rendering position of all notes
             const noteDivs = document.querySelectorAll('.note');
@@ -306,8 +349,9 @@
         }
 
         function handleDrag(e) {
+            if (!selectedNote) return;
             e.preventDefault();
-            selectedNote.style.position = 'absolute';
+            //selectedNote.style.position = 'absolute';
             selectedNote.style.left = `${e.clientX}px`;
             selectedNote.style.top = `${e.clientY}px`;
         }
