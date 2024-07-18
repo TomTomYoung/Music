@@ -1,4 +1,3 @@
-%%html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,11 +32,37 @@
             display: flex;
             flex-direction: column;
         }
+        .tool-buttons {
+            margin-bottom: 20px;
+        }
+        .tool-buttons button {
+            margin-right: 10px;
+        }
+        .edit-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
     <h1>Melody Generator</h1>
-    <button id="toggleMode">Switch to Mouse Over Mode</button>
+
+    <div id="currentMode">Current Mode: click</div>
+
+    <div class="tool-buttons">
+        <button id="resetPositions">Reset Positions</button>
+        <button id="mouseOverMode">Mouse Over Mode</button>
+        <button id="clickMode">Click Mode</button>
+        <button id="addNoteMode">Add Note Mode</button>
+        <button id="gripMode">Grip Mode</button>
+        <button id="editMode">Edit Mode</button>
+    </div>
     <label for="waveform">Waveform:</label>
     <select id="waveform">
         <option value="sine">Sine</option>
@@ -50,8 +75,8 @@
     <input type="range" id="duration" min="0.1" max="2.0" step="0.1" value="0.5">
     <span id="durationValue">0.5</span>
     <label for="volume">Volume:</label>
-    <input type="range" id="volume" min="0.0" max="1.0" step="0.1" value="0.5">
-    <span id="volumeValue">0.5</span>
+    <input type="range" id="volume" min="0.0" max="1.0" step="0.01" value="0.02">
+    <span id="volumeValue">0.02</span>
     <button id="playMelody">Play Melody</button>
     <div class="note-container" id="noteContainer"></div>
     <div id="melodyOutput"></div>
@@ -59,7 +84,9 @@
     <script>
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         let melody = [];
-        let mode = 'mouseover';
+        let mode = 'click';
+        let selectedNote = null;
+        const initialNotePositions = [];
 
         const notes = [
             { name: 'C0 (ド)', freq: 16.35 }, { name: 'C#0/Db0 (ド#)', freq: 17.32 }, { name: 'D0 (レ)', freq: 18.35 }, { name: 'D#0/Eb0 (レ#)', freq: 19.45 }, { name: 'E0 (ミ)', freq: 20.60 },
@@ -84,43 +111,110 @@
             { name: 'B7 (シ)', freq: 3951.07 }, { name: 'C8 (ド)', freq: 4186.01 }
         ];
 
-        function createNoteDiv(note) {
-            const div = document.createElement('div');
+        function createNoteDiv(note, index) {
+            const div = document.createElement('div');                    
             div.className = 'note';
             div.textContent = note.name;
             div.dataset.freq = note.freq;
-
-            if (mode === 'click') {
-                div.addEventListener('click', handleNoteClick);
-            } else if (mode === 'mouseover') {
-                div.addEventListener('mouseover', handleNoteMouseOver);
-            } else if (mode === 'add') {
-                div.addEventListener('click', handleNoteAdd);
-            }
-
+            div.dataset.index = index;
             return div;
         }
 
-        function updateNoteDivs() {
+        function setupNoteDivs() {
             const container = document.getElementById('noteContainer');
             container.innerHTML = '';
-            notes.forEach(note => {
-                container.appendChild(createNoteDiv(note));
+            notes.forEach((note, index) => {
+                const noteDiv = createNoteDiv(note, index);
+                //addEventListeners(noteDiv);
+                container.appendChild(noteDiv);
             });
         }
 
-        document.getElementById('toggleMode').addEventListener('click', function() {
-            if (mode === 'mouseover') {
-                mode = 'click';
-                this.textContent = 'Click Mode';
-            } else if (mode === 'click') {
-                mode = 'add';
-                this.textContent = 'Add Note Mode';
-            } else if (mode === 'add') {
-                mode = 'mouseover';
-                this.textContent = 'Mouseover Mode';
-            }
-            updateNoteDivs(); // モード変更後にupdateNoteDivsを呼び出して正しいリスナーを設定する
+        function removeEventListeners() {
+            const noteDivs = document.querySelectorAll('.note');
+            noteDivs.forEach(div => {
+                div.removeEventListener('mouseover', handleNoteMouseOver);
+                div.removeEventListener('click', handleNoteClick);
+                div.removeEventListener('click', handleNoteAdd);
+                div.removeEventListener('mousedown', handleMouseDown);
+                div.removeEventListener('dblclick', handleShowEditTools);
+            });
+        }
+        
+        function addEventListeners(div) {
+            const noteDivs = document.querySelectorAll('.note');
+            noteDivs.forEach(div => {
+                if (mode === 'mouseover') {
+                    div.addEventListener('mouseover', handleNoteMouseOver);
+                } else if (mode === 'click') {
+                    div.addEventListener('click', handleNoteClick);
+                } else if (mode === 'add') {
+                    div.addEventListener('click', handleNoteAdd);
+                } else if (mode === 'grip') {
+                    div.addEventListener('mousedown', handleMouseDown);
+                } else if (mode === 'edit') {
+                    div.addEventListener('click', handleShowEditTools);
+                }
+            });            
+        }
+        
+        // function addEventListeners(div) {
+        //     if (mode === 'mouseover') {
+        //         div.addEventListener('mouseover', handleNoteMouseOver);
+        //     } else if (mode === 'click') {
+        //         div.addEventListener('click', handleNoteClick);
+        //     } else if (mode === 'add') {
+        //         div.addEventListener('click', handleNoteAdd);
+        //     } else if (mode === 'grip') {
+        //         div.addEventListener('mousedown', handleMouseDown);
+        //     } else if (mode === 'edit') {
+        //         div.addEventListener('click', handleShowEditTools);
+        //     }
+        // }
+
+
+        function updateCurrentModeDisplay() {
+            document.getElementById('currentMode').textContent = `Current Mode: ${mode}`;
+        }
+
+        document.getElementById('mouseOverMode').addEventListener('click', function() {
+            mode = 'mouseover';
+            removeEventListeners();
+            addEventListeners();
+            //setupNoteDivs();
+            updateCurrentModeDisplay();
+        });
+
+        document.getElementById('clickMode').addEventListener('click', function() {
+            mode = 'click';
+            removeEventListeners();
+            addEventListeners();
+            //setupNoteDivs();
+            updateCurrentModeDisplay();
+        });
+
+        document.getElementById('addNoteMode').addEventListener('click', function() {
+            mode = 'add';
+            removeEventListeners();
+            addEventListeners();
+            //setupNoteDivs();
+            updateCurrentModeDisplay();
+        });
+
+        document.getElementById('gripMode').addEventListener('click', function() {
+            mode = 'grip';
+            removeEventListeners();
+            addEventListeners();
+            //setupNoteDivs();
+            updateCurrentModeDisplay();
+        });
+
+        document.getElementById('editMode').addEventListener('click', function() {
+            mode = 'edit';
+            removeEventListeners();
+            addEventListeners();
+            //setupNoteDivs();
+            updateCurrentModeDisplay();
         });
 
         document.getElementById('duration').addEventListener('input', function() {
@@ -136,6 +230,9 @@
                 await playTone(note.frequency, note.duration, note.volume);
             }
         });
+
+        document.getElementById('resetPositions').addEventListener('click', resetNotePositions);
+
 
         function handleNoteClick(event) {
             const freq = parseFloat(event.target.dataset.freq);
@@ -162,22 +259,147 @@
             updateMelodyOutput();
         }
 
-        function updateMelodyOutput() {
-            const container = document.getElementById('melodyOutput');
-            container.innerHTML = '';
-            melody.forEach((note, index) => {
-                const div = document.createElement('div');
-                div.className = 'melody-note';
-                div.textContent = `${note.name} - ${note.duration}s - Volume: ${note.volume}`;
-                const deleteButton = document.createElement('button');
-                deleteButton.textContent = 'Delete';
-                deleteButton.addEventListener('click', () => {
-                    melody.splice(index, 1);
-                    updateMelodyOutput();
-                });
-                div.appendChild(deleteButton);
-                container.appendChild(div);
+        function handleMouseDown(e) {
+            const noteDiv = e.target;
+            e.preventDefault();
+            selectedNote = noteDiv;
+
+            const noteContainer = document.getElementById('noteContainer');
+
+            // Ensure the parent container has a relative position
+            //noteContainer.style.position = 'block';
+            noteContainer.style.display = "";
+
+            // Record the current rendering position of all notes
+            const noteDivs = document.querySelectorAll('.note');
+            const positions = Array.from(noteDivs).map(div => {
+                const rect = div.getBoundingClientRect();
+                return {
+                    div,
+                    top: rect.top + window.scrollY,
+                    left: rect.left + window.scrollX,
+                    width: rect.width,
+                    height: rect.height
+                };
             });
+
+            // Use requestAnimationFrame to ensure the styles are applied in the next frame
+            requestAnimationFrame(() => {
+                positions.forEach(({ div, top, left, width, height }) => {
+                    div.style.position = 'absolute';
+                    div.style.top = `${top}px`;
+                    div.style.left = `${left}px`;
+                    div.style.width = `${width}px`; // Ensure width is maintained
+                    div.style.height = `${height}px`; // Ensure height is maintained
+                    div.style.margin = '0'; // Reset margin to avoid additional offsets
+                });
+            });
+
+            document.addEventListener('mousemove', handleDrag);
+            document.addEventListener('mouseup', () => {
+                document.removeEventListener('mousemove', handleDrag);
+            }, { once: true });
+        }
+
+        function handleShowEditTools(e) {
+            showEditTools(e.target);
+        }
+
+        function handleDrag(e) {
+            e.preventDefault();
+            selectedNote.style.position = 'absolute';
+            selectedNote.style.left = `${e.clientX}px`;
+            selectedNote.style.top = `${e.clientY}px`;
+        }
+
+        function resetNotePositions() {
+            const container = document.getElementById('noteContainer');
+            const noteDivs = container.getElementsByClassName('note');
+            for (let i = 0; i < noteDivs.length; i++) {
+                const noteDiv = noteDivs[i];
+                noteDiv.style.position = 'static';
+                noteDiv.style.left = '';
+                noteDiv.style.top = '';
+            }
+        }
+
+        function showEditTools(noteDiv) {
+            const noteIndex = noteDiv.dataset.index;
+            const editContainer = document.createElement('div');
+            editContainer.className = 'edit-container';
+
+            const waveformLabel = document.createElement('label');
+            waveformLabel.textContent = 'Waveform:';
+            const waveformSelect = document.createElement('select');
+            waveformSelect.innerHTML = `
+                <option value="sine">Sine</option>
+                <option value="square">Square</option>
+                <option value="triangle">Triangle</option>
+                <option value="sawtooth">Sawtooth</option>
+                <option value="noise">Noise</option>
+            `;
+            waveformSelect.value = 'sine';
+
+            const durationLabel = document.createElement('label');
+            durationLabel.textContent = 'Duration (s):';
+            const durationInput = document.createElement('input');
+            durationInput.type = 'range';
+            durationInput.min = '0.1';
+            durationInput.max = '2.0';
+            durationInput.step = '0.1';
+            durationInput.value = '0.5';
+            const durationValue = document.createElement('span');
+            durationValue.textContent = '0.5';
+
+            durationInput.addEventListener('input', function() {
+                durationValue.textContent = this.value;
+            });
+
+            const volumeLabel = document.createElement('label');
+            volumeLabel.textContent = 'Volume:';
+            const volumeInput = document.createElement('input');
+            volumeInput.type = 'range';
+            volumeInput.min = '0.0';
+            volumeInput.max = '1.0';
+            volumeInput.step = '0.1';
+            volumeInput.value = '0.5';
+            const volumeValue = document.createElement('span');
+            volumeValue.textContent = '0.5';
+
+            volumeInput.addEventListener('input', function() {
+                volumeValue.textContent = this.value;
+            });
+
+            const saveButton = document.createElement('button');
+            saveButton.textContent = 'Save';
+            saveButton.addEventListener('click', () => {
+                const newWaveform = waveformSelect.value;
+                const newDuration = durationInput.value;
+                const newVolume = volumeInput.value;
+                notes[noteIndex].waveform = newWaveform;
+                notes[noteIndex].duration = newDuration;
+                notes[noteIndex].volume = newVolume;
+                document.body.removeChild(editContainer);
+            });
+
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel';
+            cancelButton.addEventListener('click', () => {
+                document.body.removeChild(editContainer);
+            });
+
+            editContainer.appendChild(waveformLabel);
+            editContainer.appendChild(waveformSelect);
+            editContainer.appendChild(durationLabel);
+            editContainer.appendChild(durationInput);
+            editContainer.appendChild(durationValue);
+            editContainer.appendChild(volumeLabel);
+            editContainer.appendChild(volumeInput);
+            editContainer.appendChild(volumeValue);
+            editContainer.appendChild(saveButton);
+            editContainer.appendChild(cancelButton);
+
+            document.body.appendChild(editContainer);
         }
 
         function playWaveform(waveform, frequency, duration, volume) {
@@ -234,7 +456,9 @@
             };
         }
 
-        updateNoteDivs();
+        setupNoteDivs();
+        updateCurrentModeDisplay();
     </script>
 </body>
 </html>
+
